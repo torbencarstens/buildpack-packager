@@ -1,0 +1,117 @@
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"io/ioutil"
+	"log"
+	"os"
+	"strings"
+
+	"github.com/cloudfoundry/libbuildpack/packager"
+	"github.com/google/subcommands"
+)
+
+type summaryCmd struct {
+}
+
+func (*summaryCmd) Name() string             { return "summary" }
+func (*summaryCmd) Synopsis() string         { return "Print out list of dependencies of this buildpack" }
+func (*summaryCmd) SetFlags(f *flag.FlagSet) {}
+func (*summaryCmd) Usage() string {
+	return `summary:
+  When run in a directory that is structured as a buildpack, prints a list of depedencies of that buildpack.
+  (i.e. what would be downloaded to build a cached zipfile)
+`
+}
+func (s *summaryCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
+	summary, err := packager.Summary(".")
+	if err != nil {
+		log.Printf("error reading dependencies from manifest: %v", err)
+		return subcommands.ExitFailure
+	}
+	fmt.Println(summary)
+	return subcommands.ExitSuccess
+}
+
+type buildCmd struct {
+	cached   bool
+	anyStack bool
+	version  string
+	cacheDir string
+	stack    string
+}
+
+func (*buildCmd) Name() string     { return "build" }
+func (*buildCmd) Synopsis() string { return "Create a buildpack zipfile from the current directory" }
+func (*buildCmd) Usage() string {
+	return `build -stack <stack>|-any-stack [-cached] [-version <version>] [-cachedir <path to cachedir>]:
+  When run in a directory that is structured as a buildpack, creates a zip file.
+
+`
+}
+func (b *buildCmd) SetFlags(f *flag.FlagSet) {
+	f.StringVar(&b.version, "version", "", "version to build as")
+	f.BoolVar(&b.cached, "cached", false, "include dependencies")
+	f.StringVar(&b.cacheDir, "cachedir", packager.CacheDir, "cache dir")
+
+	f.StringVar(&b.stack, "stack", "", "stack to package buildpack for")
+	f.BoolVar(&b.anyStack, "any-stack", false, "package buildpack for any stack")
+}
+func (b *buildCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
+	if b.stack == "" && !b.anyStack {
+		log.Printf("error: must either specify a stack or pass -any-stack")
+		return subcommands.ExitFailure
+	}
+	if b.stack != "" && b.anyStack {
+		log.Printf("error: cannot specify a stack AND pass -any-stack")
+		return subcommands.ExitFailure
+	}
+	if b.version == "" {
+		v, err := ioutil.ReadFile("VERSION")
+		if err != nil {
+			log.Printf("error: Could not read VERSION file: %v", err)
+			return subcommands.ExitFailure
+		}
+		b.version = strings.TrimSpace(string(v))
+	}
+
+	log.Printf("packaging with %s %s %s %s", b.cacheDir, b.version, b.stack, b.cached)
+	zipFile, err := packager.Package(".", b.cacheDir, b.version, b.stack, b.cached)
+	if err != nil {
+		log.Printf("error while creating zipfile: %v", err)
+		return subcommands.ExitFailure
+	}
+
+	log.Printf(".zip file was successfully creates as %s", zipFile)
+	buildpackType := "uncached"
+	if b.cached {
+		buildpackType = "cached"
+	}
+
+	stat, err := os.Stat(zipFile)
+	if err != nil {
+		log.Printf("error while stating zipfile: %v", err)
+		return subcommands.ExitFailure
+	}
+
+	fmt.Printf("%s buildpack created and saved as %s with a size of %dMB\n", buildpackType, zipFile, stat.Size()/1024/1024)
+	return subcommands.ExitSuccess
+}
+
+func main() {
+	subcommands.Register(subcommands.HelpCommand(), "")
+	subcommands.Register(subcommands.FlagsCommand(), "")
+	subcommands.Register(subcommands.CommandsCommand(), "")
+	subcommands.Register(&summaryCmd{}, "Custom")
+	subcommands.Register(&buildCmd{}, "Custom")
+
+	flag.Parse()
+	ctx := context.Background()
+	exitCode := int(subcommands.Execute(ctx))
+
+	log.Printf("got %d as exit status", exitCode)
+
+	os.Exit(exitCode)
+}
