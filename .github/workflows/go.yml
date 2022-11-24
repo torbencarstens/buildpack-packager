@@ -13,9 +13,9 @@ jobs:
       with:
         go-version: 1.18
 
-    - run: wget https://raw.githubusercontent.com/cloudfoundry/libbuildpack/9d81592a5e5a772791e8507cb3891b7ac0fa2615/packager/buildpack-packager/main.go
-
-    - run: go mod init github.com/torbencarstens/buildpack-packager
+#    - run: wget https://raw.githubusercontent.com/cloudfoundry/libbuildpack/9d81592a5e5a772791e8507cb3891b7ac0fa2615/packager/buildpack-packager/main.go
+#
+#    - run: go mod init github.com/torbencarstens/buildpack-packager
     - run: go mod tidy
     - run: CGOENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s -extldflags=-static" -o ./buildpack-packager
 
