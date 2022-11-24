@@ -1,6 +1,6 @@
 module github.com/torbencarstens/buildpack-packager
 
-go 1.19
+go 1.18
 
 require (
 	github.com/cloudfoundry/libbuildpack v0.0.0-20221115221325-f9d1b0cc562f
